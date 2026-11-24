@@ -20,7 +20,9 @@ app.get('/images/generated/:id.svg', (req, res) => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600"><rect width="600" height="600" rx="48" fill="hsl(${hue} 72% 52%)"/><circle cx="300" cy="300" r="150" fill="hsl(${hue} 80% 82%)"/><text x="300" y="325" text-anchor="middle" font-family="Arial,sans-serif" font-size="72" font-weight="700" fill="hsl(${hue} 60% 25%)">${Number.isFinite(id) ? id : '?'}</text></svg>`;
   res.type('image/svg+xml').send(svg);
 });
-app.use('/images', express.static(path.join(__dirname, '..', 'public', 'images')));
+const productImages = express.static(path.join(__dirname, '..', 'public', 'images'));
+app.use('/images', productImages);
+app.use('/api/products/images', productImages);
 app.use('/api/products', productsRouter);
 app.use('/api/auth', authRouter);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));

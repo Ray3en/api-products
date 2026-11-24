@@ -19,6 +19,11 @@ test('Products CRUD and JWT auth', async () => {
   assert.equal(list.body.items.length, 10);
   assert.equal(list.body.pagination.totalItems, 50);
 
+  await request(app)
+    .get('/api/products/images/product-2.svg')
+    .expect(200)
+    .expect('Content-Type', /image\/svg\+xml/);
+
   const filtered = await request(app)
     .get('/api/products?page=2&limit=5&minPrice=1000&maxPrice=8000&sortBy=price&order=desc')
     .expect(200);
