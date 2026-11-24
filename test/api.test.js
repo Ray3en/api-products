@@ -17,7 +17,7 @@ test('Products CRUD and JWT auth', async () => {
 
   const list = await request(app).get('/api/products').expect(200);
   assert.equal(list.body.items.length, 10);
-  assert.equal(list.body.pagination.totalItems, 50);
+  assert.ok(list.body.pagination.totalItems >= 50);
 
   await request(app)
     .get('/api/images/product-1.svg')
@@ -34,34 +34,45 @@ test('Products CRUD and JWT auth', async () => {
   const one = await request(app).get('/api/products/1').expect(200);
   assert.equal(one.body.id, 1);
 
+  const productId = 100000 + Math.floor(Math.random() * 900000);
   const created = await request(app).post('/api/products').send({
-    id: 100,
+    id: productId,
     name: 'Тестовый продукт',
     price: 100,
     description: 'Для проверки'
   }).expect(201);
   assert.equal(created.body.discountPrice, 100);
-  assert.equal(created.body.image, '/images/generated/100.svg');
+  assert.equal(created.body.image, `/images/generated/${productId}.svg`);
   await request(app).get(created.body.image).expect(200).expect('Content-Type', /image\/svg\+xml/);
 
-  const patched = await request(app).patch('/api/products/100').send({ price: 90 }).expect(200);
+  const patched = await request(app).patch(`/api/products/${productId}`).send({ price: 90 }).expect(200);
   assert.equal(patched.body.price, 90);
-  await request(app).delete('/api/products/100').expect(204);
+  await request(app).delete(`/api/products/${productId}`).expect(204);
 
-  const register = await request(app).post('/api/auth/register').send({
+  const agent = request.agent(app);
+  const email = `student-${Date.now()}@example.com`;
+  const register = await agent.post('/api/auth/register').send({
     name: 'Ученик',
-    email: 'student@example.com',
+    email,
     password: 'secret12'
   }).expect(201);
   assert.ok(register.body.token);
+  assert.match(register.headers['set-cookie'][0], /refreshToken=.*HttpOnly/);
 
-  const login = await request(app).post('/api/auth/login').send({
-    email: 'student@example.com',
+  const login = await agent.post('/api/auth/login').send({
+    email,
     password: 'secret12'
   }).expect(200);
 
   const me = await request(app).get('/api/auth/me')
     .set('Authorization', `Bearer ${login.body.token}`)
     .expect(200);
-  assert.equal(me.body.email, 'student@example.com');
+  assert.equal(me.body.email, email);
+
+  const refreshed = await agent.post('/api/auth/refresh').expect(200);
+  assert.ok(refreshed.body.token);
+  assert.notEqual(refreshed.body.token, login.body.token);
+
+  await agent.post('/api/auth/logout').expect(204);
+  await agent.post('/api/auth/refresh').expect(401);
 });

@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { db } = require('../db');
@@ -6,7 +7,42 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 const publicUser = (user) => ({ id: user.id, name: user.name, email: user.email, createdAt: user.created_at });
-const signToken = (user) => jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET || 'dev-secret-change-me', { expiresIn: '1h' });
+const signToken = (user) => jwt.sign(
+  { sub: user.id, email: user.email, jti: crypto.randomUUID() },
+  process.env.JWT_SECRET || 'dev-secret-change-me',
+  { expiresIn: '15m' }
+);
+const refreshLifetimeMs = 30 * 24 * 60 * 60 * 1000;
+const refreshCookie = 'refreshToken';
+const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
+const cookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/api/auth',
+  maxAge: refreshLifetimeMs
+};
+
+function readCookie(req, name) {
+  const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map((part) => {
+    const [key, ...value] = part.trim().split('=');
+    return [key, decodeURIComponent(value.join('='))];
+  }).filter(([key]) => key));
+  return cookies[name];
+}
+
+function issueRefreshToken(userId, res) {
+  const token = crypto.randomBytes(48).toString('base64url');
+  const expiresAt = new Date(Date.now() + refreshLifetimeMs).toISOString();
+  db.prepare('INSERT INTO refresh_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
+    .run(hashToken(token), userId, expiresAt);
+  res.cookie(refreshCookie, token, cookieOptions);
+}
+
+function issueSession(user, res) {
+  issueRefreshToken(user.id, res);
+  return { user: publicUser(user), token: signToken(user) };
+}
 
 router.post('/register', async (req, res) => {
   const { name, email, password } = req.body;
@@ -17,7 +53,7 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const result = db.prepare('INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)').run(name, email, passwordHash);
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
-    res.status(201).json({ user: publicUser(user), token: signToken(user) });
+    res.status(201).json(issueSession(user, res));
   } catch (e) {
     if (e.code === 'ERR_SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ message: 'Пользователь с таким email уже существует' });
     throw e;
@@ -29,7 +65,36 @@ router.post('/login', async (req, res) => {
   if (!user || !(await bcrypt.compare(req.body.password || '', user.password_hash))) {
     return res.status(401).json({ message: 'Неверный email или пароль' });
   }
-  res.json({ user: publicUser(user), token: signToken(user) });
+  res.json(issueSession(user, res));
+});
+
+router.post('/refresh', (req, res) => {
+  const token = readCookie(req, refreshCookie);
+  if (!token) return res.status(401).json({ message: 'Refresh-токен отсутствует' });
+
+  const tokenHash = hashToken(token);
+  const session = db.prepare(`
+    SELECT refresh_tokens.user_id, refresh_tokens.expires_at, users.*
+    FROM refresh_tokens
+    JOIN users ON users.id = refresh_tokens.user_id
+    WHERE refresh_tokens.token_hash = ?
+  `).get(tokenHash);
+
+  db.prepare('DELETE FROM refresh_tokens WHERE token_hash = ?').run(tokenHash);
+
+  if (!session || new Date(session.expires_at).getTime() <= Date.now()) {
+    res.clearCookie(refreshCookie, { ...cookieOptions, maxAge: undefined });
+    return res.status(401).json({ message: 'Refresh-токен недействителен или истёк' });
+  }
+
+  res.json(issueSession(session, res));
+});
+
+router.post('/logout', (req, res) => {
+  const token = readCookie(req, refreshCookie);
+  if (token) db.prepare('DELETE FROM refresh_tokens WHERE token_hash = ?').run(hashToken(token));
+  res.clearCookie(refreshCookie, { ...cookieOptions, maxAge: undefined });
+  res.status(204).end();
 });
 
 router.get('/me', authRequired, (req, res) => {

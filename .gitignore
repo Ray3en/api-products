@@ -4,3 +4,4 @@ app.db
 data/app.db
 data/*.db-*
 .DS_Store
+.env

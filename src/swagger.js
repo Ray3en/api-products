@@ -73,6 +73,8 @@ module.exports = {
     },
     '/api/auth/register': { post: { tags: ['Auth'], summary: 'Регистрация', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['name', 'email', 'password'], properties: { name: { type: 'string' }, email: { type: 'string', format: 'email' }, password: { type: 'string', minLength: 6 } } } } } }, responses: { 201: { description: 'Пользователь и JWT' } } } },
     '/api/auth/login': { post: { tags: ['Auth'], summary: 'Вход', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string' }, password: { type: 'string' } } } } } }, responses: { 200: { description: 'Пользователь и JWT' }, 401: { description: 'Неверные данные' } } } },
+    '/api/auth/refresh': { post: { tags: ['Auth'], summary: 'Обновить access-токен по HttpOnly cookie', responses: { 200: { description: 'Новый access-токен и обновлённая cookie' }, 401: { description: 'Refresh-токен отсутствует или истёк' } } } },
+    '/api/auth/logout': { post: { tags: ['Auth'], summary: 'Завершить refresh-сессию', responses: { 204: { description: 'Сессия завершена' } } } },
     '/api/auth/me': { get: { tags: ['Auth'], summary: 'Текущий пользователь', security: [{ bearerAuth: [] }], responses: { 200: { description: 'Пользователь' }, 401: { description: 'Нет или неверный JWT' } } } }
   }
 };
