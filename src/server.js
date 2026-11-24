@@ -22,7 +22,7 @@ app.get('/images/generated/:id.svg', (req, res) => {
 });
 const productImages = express.static(path.join(__dirname, '..', 'public', 'images'));
 app.use('/images', productImages);
-app.use('/api/products/images', productImages);
+app.use('/api/images', productImages);
 app.use('/api/products', productsRouter);
 app.use('/api/auth', authRouter);
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));

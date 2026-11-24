@@ -20,7 +20,7 @@ test('Products CRUD and JWT auth', async () => {
   assert.equal(list.body.pagination.totalItems, 50);
 
   await request(app)
-    .get('/api/products/images/product-2.svg')
+    .get('/api/images/product-1.svg')
     .expect(200)
     .expect('Content-Type', /image\/svg\+xml/);
 
