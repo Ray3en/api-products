@@ -7,12 +7,18 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 const publicUser = (user) => ({ id: user.id, name: user.name, email: user.email, createdAt: user.created_at });
+const accessTokenLifetime = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+const durationUnits = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 };
+const parseDuration = (value, fallback) => {
+  const match = String(value || '').trim().match(/^(\d+)([smhd])$/i);
+  return match ? Number(match[1]) * durationUnits[match[2].toLowerCase()] : fallback;
+};
 const signToken = (user) => jwt.sign(
   { sub: user.id, email: user.email, jti: crypto.randomUUID() },
   process.env.JWT_SECRET || 'dev-secret-change-me',
-  { expiresIn: '15m' }
+  { expiresIn: accessTokenLifetime }
 );
-const refreshLifetimeMs = 30 * 24 * 60 * 60 * 1000;
+const refreshLifetimeMs = parseDuration(process.env.JWT_REFRESH_EXPIRES_IN, 30 * 86_400_000);
 const refreshCookie = 'refreshToken';
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
 const cookieOptions = {
